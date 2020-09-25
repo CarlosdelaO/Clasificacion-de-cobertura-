@@ -1,0 +1,106 @@
+var starting_date = ee.Date('2020-01-01');
+var end_date  = ee.Date('2020-12-31');
+var path = 27;
+var row = 48;
+var fc = ee.FeatureCollection('users/ingcarlosjahirdelaomartinez/CUENCA_TECPAN');
+
+
+
+
+function maskL8sr(image) {
+  // Bits 3 and 5 are cloud shadow and cloud, respectively.
+  var cloudShadowBitMask = (1 << 3);
+  var cloudsBitMask = (1 << 5);
+  // Get the pixel QA band.
+  var qa = image.select('pixel_qa');
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0)
+                 .and(qa.bitwiseAnd(cloudsBitMask).eq(0));
+  return image.updateMask(mask);
+}
+
+function cloudMaskL457(image) {
+  var qa = image.select('pixel_qa');
+  // If the cloud bit (5) is set and the cloud confidence (7) is high
+  // or the cloud shadow bit is set (3), then it's a bad pixel.
+  var cloud = qa.bitwiseAnd(1 << 5)
+                  .and(qa.bitwiseAnd(1 << 7))
+                  .or(qa.bitwiseAnd(1 << 3));
+  // Remove edge pixels that don't occur in all bands
+  var mask2 = image.mask().reduce(ee.Reducer.min());
+  return image.updateMask(cloud.not()).updateMask(mask2);
+}
+
+
+
+
+
+
+
+
+var collectionL8 = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
+                  .filterDate(starting_date, end_date)
+                  .filter(ee.Filter.eq('WRS_PATH', path))
+                  .filter(ee.Filter.eq('WRS_ROW', row))
+                  .map(maskL8sr)
+                  .map(function(image){return image.clip(fc)});
+
+var collectionL7 = ee.ImageCollection('LANDSAT/LE07/C01/T1_SR')
+                  .filterDate(starting_date, end_date)
+                  .filter(ee.Filter.eq('WRS_PATH', path))
+                  .filter(ee.Filter.eq('WRS_ROW', row))
+                  .map(cloudMaskL457)
+                 .map(function(image){return image.clip(fc)});
+
+var collectionL5 = ee.ImageCollection('LANDSAT/LT05/C01/T1_SR')
+                  .filterDate(starting_date, end_date)
+                  .filter(ee.Filter.eq('WRS_PATH', path))
+                  .filter(ee.Filter.eq('WRS_ROW', row))
+                  .map(cloudMaskL457)
+                  .map(function(image){return image.clip(fc)});
+
+
+
+
+
+print('collectionL8:', collectionL8);
+print('collectionL7:', collectionL7);
+print('collectionL5:', collectionL5);
+
+
+var median_L8 = collectionL8.median();
+var median_L7 = collectionL7.median();
+var median_L5 = collectionL5.median();
+
+
+
+print('med_L8',median_L8);
+print('med_L7',median_L7);
+print('med_L5',median_L5);
+
+
+
+
+Map.setCenter(-100.5800,17.4000, 11.5);
+Map.addLayer(median_L8, {bands: ['B4', 'B3', 'B2'], min: 0, max: 3000},'Median_L8');
+Map.addLayer(median_L7, {bands: ['B3', 'B2', 'B1'], min: 0, max: 3000},'Median_L7');
+Map.addLayer(median_L5, {bands: ['B3', 'B2', 'B1'], min: 0, max: 3000},'Median_L5');
+
+
+
+
+
+
+
+Export.image.toAsset({image: median_L8.select("B2","B3","B4","B5","B6","B7","B10","B11"),description:'median_L8_ASSETS', assetId:'users/ingcarlosjahirdelaomartinez/LANSAT_SEGMENT_86-20/median_L8_20_B2-B11' , region: fc, crs:'EPSG:4326',scale: 30 , maxPixels: 1e12});
+//Export.image.toAsset({image: median_L7.select("B1","B2","B3","B4","B5","B6","B7"),description:'median_L7_ASSETS', assetId:'users/ingcarlosjahirdelaomartinez/LANSAT_SEGMENT_86-20/median_L7_03_B1-B7' , region: fc, crs:'EPSG:4326',scale: 30 , maxPixels: 1e12});
+//Export.image.toAsset({image: median_L5.select("B1","B2","B3","B4","B5","B6","B7"),description:'median_L5_ASSETS', assetId:'users/ingcarlosjahirdelaomartinez/LANSAT_SEGMENT_86-20/median_L5_86_B1-B7' , region: fc, crs:'EPSG:4326',scale: 30 , maxPixels: 1e12});
+
+
+
+
+
+
+//Export.image.toDrive({image: median_L8.select("B2","B3","B4","B5","B6","B7","B10","B11") ,description: 'median_L8_20_B2-B11', folder:'LANSAT_SEGMENT_86-20', crs:'EPSG:4326', scale: 30,maxPixels: 1e12, region: fc});
+//Export.image.toDrive({image: median_L7.select("B1","B2","B3","B4","B5","B6","B7") ,description: 'median_L7_03_B1-B7', folder:'LANSAT_SEGMENT_86-20', crs:'EPSG:4326', scale: 30,maxPixels: 1e12, region: fc});
+//Export.image.toDrive({image: median_L5.select("B1","B2","B3","B4","B5","B6","B7") ,description: 'median_L5_86_B1-B7', folder:'LANSAT_SEGMENT_86-20', crs:'EPSG:4326', scale: 30,maxPixels: 1e12, region: fc});
